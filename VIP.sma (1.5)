@@ -1,0 +1,429 @@
+#include <amxmodx>
+#include <amxmisc>
+#include <fun>
+#include <engine>
+#include <fakemeta>
+#include <cstrike>
+#include <hamsandwich>
+
+new const PLUGIN[]	= "Deathrun VIP",
+	 VERSION[]	= "1.5",
+	  AUTHOR[]	= "Fuffy";
+
+new bool:HealthRegStart[33];
+
+#define IsPlayer(%0)    ( 1 <= %0 <= g_iMaxPlayers )
+new g_iMaxPlayers;
+
+#define MAX_DISTANCE 8192.0
+
+new vip_acces_cvar;
+new vip_health_cvar;
+new vip_reg_cvar;
+new vip_dmg_cvar;
+new vip_gravity_cvar;
+new vip_manager;
+
+public plugin_init( )
+{
+	register_plugin
+	(
+		.plugin_name = PLUGIN, 
+		.version     = VERSION, 
+		.author      = AUTHOR
+	)
+
+	register_clcmd( "say /revive", "ReviveCMD" );
+	register_clcmd( "say_team /revive", "ReviveCMD" );
+	register_clcmd( "say /vips", "VipsCMD" );
+	register_clcmd( "say_team /vips", "VipsCMD" );
+
+	register_clcmd("teleport", "TeleportCMD" );
+
+	RegisterHam( Ham_Spawn, "player", "VIP_Spawn", 1);
+
+	register_event( "Damage", "VIP_Hp", "b", "2!0", "3=0", "4!0" );
+	register_event("CurWeapon", "VIP_Speed", "be", "1=1");
+
+	g_iMaxPlayers = get_maxplayers ( )
+	RegisterHam ( Ham_TakeDamage, "player", "Player_TakeDamage" );
+
+	vip_acces_cvar = register_cvar( "vip_flags", "ab" );
+	vip_health_cvar = register_cvar( "vip_health", "900" );
+	vip_reg_cvar = register_cvar( "vip_full_health_delay", "10" );
+	vip_dmg_cvar = register_cvar( "vip_damage_multiplier", "3" );
+	vip_gravity_cvar = register_cvar( "vip_gravity", "400" );	
+	vip_manager = register_cvar( "vip_owner_id", "Privat.");
+}
+
+public VIP_Spawn( id )
+{
+	if( is_user_alive( id ) )
+	{
+		if( is_player_vip( id ) )
+		{
+			set_task( 3.0, "VIP_Items", id );
+			CC(id, "^1[ ^4VIP^1 ] Peste^4 3 secunde^1 vei primi beneficiile de ^3VIP^1 ." );
+		}
+		else
+		{
+			set_task(120.0,"vip_pubs",0,"",0,"b",0)
+		}
+	}	
+}
+
+public vip_pubs( id )
+{
+	new szOwner[ 25 ];
+	get_pcvar_string( vip_manager, szOwner, charsmax( szOwner ) );
+
+	if( !is_player_vip( id ) && is_user_connected( id ) )
+	{
+		CC(id, "^1[ ^4VIP^1 ] Daca vrei sa cumperi ^3VIP^1, da-i add: ^4%s^1 .", szOwner );
+		CC(id, "^1[ ^4VIP^1 ] Daca vrei sa vezi jucatorii ^3VIP^1, scrie in chat comanda ^4/vips^1." );
+	}
+	else
+	{
+		remove_task( id );
+	}
+}
+public VipsCMD( id )
+{
+	new Players[32], i, num, VipName[32], buffer[164];
+	
+	get_players( Players ,num, "c" )
+	{
+		for( i = 0; i < num; i++ )
+		{
+			if( is_player_vip(Players[i]) > 0 )
+			{
+				get_user_name( Players[i], VipName, charsmax( VipName ) );
+				formatex( buffer, charsmax( buffer ), "<u> <font size = 6> VIP's online</u>:^n ^n </font> <body bgcolor = #383838> </body> <center> <font size = 4 color = #380000 face = WildWest> <b> %s^n </b> </font> </center>", VipName );
+				show_motd( id, buffer );
+			}
+			else
+			{
+				formatex( buffer, charsmax( buffer ), "<body bgcolor = #383838> <center> <font size = 5 color = 00CC00 face = WildWest> <b> Nu sunt VIP-uri online pe server! </b> </font> </center> </body>", VipName );
+				show_motd( id, buffer );
+			}
+		}
+	} 
+}
+
+public VIP_Items( id )
+{
+	if( is_user_alive( id ) )
+	{
+
+		set_task(1.0, "iScoreBoard", id + 6969)
+
+		set_user_maxspeed( id, get_user_maxspeed( id ) * 10.0 );
+
+		strip_user_weapons( id )
+
+		set_user_health( id, get_pcvar_num( vip_health_cvar ) );
+		set_user_gravity( id, float(get_pcvar_num( vip_gravity_cvar ) ) / 800.0 );
+
+		give_item( id, "weapon_hegrenade" );
+		give_item( id, "weapon_flashbang" );
+		give_item( id, "weapon_smokegrenade" );
+
+		cs_set_user_bpammo( id, CSW_HEGRENADE, 10 );
+		cs_set_user_bpammo( id, CSW_FLASHBANG, 10 );
+		cs_set_user_bpammo( id, CSW_SMOKEGRENADE, 10 );
+
+		switch( cs_get_user_team( id ) )
+		{
+			case CS_TEAM_T:
+			{
+				give_item( id, "weapon_knife" );
+
+				give_item( id, "weapon_deagle" );
+				cs_set_user_bpammo( id, CSW_DEAGLE, 999 );
+
+			}
+
+
+			case CS_TEAM_CT:
+			{
+
+
+				cs_set_user_model( id, "vip" );
+				give_item( id, "weapon_knife" );
+
+				give_item( id, "weapon_deagle" );
+				cs_set_user_bpammo( id, CSW_DEAGLE, 999 );
+
+				give_item( id, "weapon_glock18" );
+				cs_set_user_bpammo( id, CSW_GLOCK18, 999 );
+
+				give_item( id, "weapon_usp" );
+				cs_set_user_bpammo( id, CSW_USP, 999 );
+
+				give_item( id, "weapon_m3" );
+				cs_set_user_bpammo( id, CSW_M3, 999 );
+				
+				give_item( id, "weapon_awp" );
+				cs_set_user_bpammo( id, CSW_AWP, 999 );
+			
+
+				give_item( id, "weapon_m4a1" );
+				cs_set_user_bpammo( id, CSW_M4A1, 999 );
+		
+				give_item( id, "weapon_ak47" );
+				cs_set_user_bpammo( id, CSW_AK47, 999 );
+			}
+
+			default: return;
+		}
+	}
+}
+
+public plugin_precache()
+{
+	precache_model( "models/player/vip_glock18.mdl");
+	precache_model( "models/player/vip_usp.mdl");
+	precache_model( "models/player/vip_deagle.mdl");
+	precache_model( "models/player/vip_m3.mdl");
+	precache_model( "models/player/vip_awp.mdl");
+	precache_model( "models/player/vip_m4a1.mdl");
+	precache_model( "models/player/vip_ak47.mdl");
+}
+
+public iScoreBoard(tID) {
+        
+        new id = tID - 6969;
+        
+        message_begin(MSG_ALL, get_user_msgid("ScoreAttrib"));
+        write_byte(id);
+        write_byte(4);
+        message_end();
+}
+
+public VIP_Hp( id )
+{
+	if( !id )
+		return PLUGIN_HANDLED;
+
+	if( is_player_vip( id ) )
+	{
+		if( HealthRegStart[ id ] == false )
+		{
+			set_task( float( get_pcvar_num( vip_reg_cvar ) ) , "vip_health", id );
+			HealthRegStart[ id ] = true;
+			return PLUGIN_CONTINUE;
+		}
+
+	}
+	return PLUGIN_CONTINUE;
+}
+
+public vip_health(id)
+{
+	if( is_user_alive( id ) )
+	{
+		set_user_health( id, get_pcvar_num( vip_health_cvar ) );
+		HealthRegStart[ id ]  = false;
+	}
+	else
+	{
+		remove_task( id );
+	}
+}
+
+public VIP_Speed( id )
+{
+	if( is_user_alive( id ) && is_player_vip( id ) )
+	{
+		set_user_maxspeed( id, get_user_maxspeed( id ) * 10.0 );
+		set_user_gravity( id, float(get_pcvar_num( vip_gravity_cvar ) ) / 800.0 );
+
+		switch( get_user_weapon( id ) )
+		{
+
+			case CSW_GLOCK18:
+			{
+				set_pev( id, pev_viewmodel2, "models/player/vip_glock18.mdl" );
+			}
+
+			case CSW_USP:
+			{
+				set_pev( id, pev_viewmodel2, "models/player/vip_usp.mdl" );
+			}
+
+			case CSW_DEAGLE:
+			{
+				set_pev( id, pev_viewmodel2, "models/player/vip_deagle.mdl" );
+			}
+
+			case CSW_M3:
+			{
+				set_pev( id, pev_viewmodel2, "models/player/vip_m3.mdl" );
+			}
+
+			case CSW_AWP:
+			{
+				set_pev( id, pev_viewmodel2, "models/player/vip_awp.mdl" );
+			}
+
+			case CSW_AK47:
+			{
+				set_pev( id, pev_viewmodel2, "models/player/vip_ak47.mdl" );
+			}
+
+			case CSW_M4A1:
+			{
+				set_pev( id, pev_viewmodel2, "models/player/vip_m4a1.mdl" );
+			}
+		}
+	
+	}
+}
+
+public TeleportCMD( iPlayer )
+{
+	if( is_player_vip( iPlayer ) && is_user_alive( iPlayer ) )
+	{
+		new Float: vOrigin[ 3 ], Float: vViewOfs[ 3 ], Float: vAngles[ 3 ], Float: vVector[ 3 ];
+		entity_get_vector( iPlayer, EV_VEC_origin, vOrigin );
+		entity_get_vector( iPlayer, EV_VEC_view_ofs, vViewOfs );
+		entity_get_vector( iPlayer, EV_VEC_v_angle, vAngles );
+ 
+		vOrigin[ 0 ] = vOrigin[ 0 ] + vViewOfs[ 0 ];
+		vOrigin[ 1 ] = vOrigin[ 1 ] + vViewOfs[ 1 ];
+		vOrigin[ 2 ] = vOrigin[ 2 ] + vViewOfs[ 2 ];
+     
+		angle_vector( vAngles, ANGLEVECTOR_FORWARD, vVector );
+     
+		vVector[ 0 ] = vVector[ 0 ] * MAX_DISTANCE + vOrigin[ 0 ];
+		vVector[ 1 ] = vVector[ 1 ] * MAX_DISTANCE + vOrigin[ 1 ];
+		vVector[ 2 ] = vVector[ 2 ] * MAX_DISTANCE + vOrigin[ 2 ];
+     
+		new pTr = create_tr2( );
+		engfunc( EngFunc_TraceLine, vOrigin, vVector, IGNORE_MONSTERS, iPlayer, pTr );
+     
+		new Float: flFraction;
+		get_tr2( pTr, TR_flFraction, flFraction );
+     
+		if( flFraction < 1.0 )
+ 		{
+			new iEntityHit;
+			get_tr2( pTr, TR_pHit, iEntityHit );
+         
+ 			if( iEntityHit == 0 )
+ 			{
+				new Float: vEndPos[ 3 ];
+				get_tr2( pTr, TR_vecEndPos, vEndPos );
+             
+  				if( point_contents( vEndPos ) != CONTENTS_SKY )
+  				{
+  					new Float: vPlane[ 3 ];
+					get_tr2( pTr, TR_vecPlaneNormal, vPlane );
+                 
+					vEndPos[ 0 ] = vEndPos[ 0 ] + vPlane[ 0 ] * 40.0;
+					vEndPos[ 1 ] = vEndPos[ 1 ] + vPlane[ 1 ] * 40.0;
+					vEndPos[ 2 ] = vEndPos[ 2 ] + vPlane[ 2 ] * 40.0;
+                 
+					entity_set_origin( iPlayer, vEndPos );
+					return PLUGIN_HANDLED;
+                 
+				}
+			}
+		}
+     
+		free_tr2( pTr );
+	}
+	return PLUGIN_HANDLED;
+}
+
+
+public Player_TakeDamage ( iVictim, iInflictor, iAttacker, Float:fDamage ) 
+{
+    
+	if ( iInflictor == iAttacker && IsPlayer ( iAttacker ) && is_player_vip( iAttacker ) ) 
+	{
+		SetHamParamFloat ( 4, fDamage * float( get_pcvar_num( vip_dmg_cvar ) ) );
+		return HAM_HANDLED;
+        
+	}
+    	return HAM_IGNORED;
+    
+}
+
+public ReviveCMD( id )
+{
+	if( is_user_alive( id ) )
+	{
+		CC( id, "!n[ !vVIP!n ] Numai jucatorii morti pot folosi aceasta comanda!" );
+		return PLUGIN_HANDLED;
+	}
+
+	if( !is_player_vip( id ) )
+	{
+		CC(id, "!n[ !vVIP!n ] Numai daca esti !eVIP!n poti folosi aceasta comanda!" );
+		return PLUGIN_HANDLED;
+	}
+	
+	ExecuteHam( Ham_CS_RoundRespawn, id );
+	return PLUGIN_HANDLED;
+	
+}
+
+public client_putinserver( id )
+{
+	new szName[ 32 ];
+	get_user_name( id, szName, charsmax( szName ) );
+
+	if( is_player_vip( id ) )
+	{
+		CC(0, "!V[ !e%s !n%s !v] !nVIP-ul !v%s!n s-a connectat de pe server!", PLUGIN, VERSION, szName );
+	}
+}
+
+public client_disconnect( id )
+{
+	new szName[ 32 ];
+	get_user_name( id, szName, charsmax( szName ) );
+
+	if( is_player_vip( id ) )
+	{
+		CC(0, "!V[ !e%s !n%s !v] !nVIP-ul !v%s!n s-a deconnectat de pe server!", PLUGIN, VERSION, szName );
+	}
+}
+
+is_player_vip( id )
+{
+	new szVIP[ 60 ];
+	get_pcvar_string( vip_acces_cvar, szVIP, charsmax( szVIP ) - 1 );
+
+	if( has_all_flags( id, szVIP ) )
+	{
+		return true;
+	}
+	return false;
+}
+
+CC(const id, const input[], any:...)
+{
+	new count = 1, players[32]
+	static msg[191]
+	vformat(msg, 190, input, 3)
+	
+	replace_all(msg, charsmax(msg), "!v", "^4")
+	replace_all(msg, charsmax(msg), "!n", "^1")
+	replace_all(msg, charsmax(msg), "!e", "^3")
+	
+	if (id) players[0] = id; else get_players(players, count, "ch")
+	{
+		for (new i = 0; i < count; i++)
+		{
+			if (is_user_connected(players[i]))
+			{
+				message_begin(MSG_ONE_UNRELIABLE, get_user_msgid("SayText"), _, players[i])
+				write_byte(players[i]);
+				write_string(msg);
+				message_end();
+			}
+		}
+	}
+}  
