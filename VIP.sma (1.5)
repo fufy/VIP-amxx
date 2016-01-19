@@ -67,7 +67,7 @@ public VIP_Spawn( id )
 		}
 		else
 		{
-			set_task(120.0,"vip_pubs",0,"",0,"b",0)
+			set_task(120.0,"vip_pubs",id,_,_,"b",0)
 		}
 	}	
 }
